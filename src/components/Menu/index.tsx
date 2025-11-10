@@ -283,7 +283,7 @@ export const Menu = forwardRef<HTMLDivElement | null, MenuProps>(
         return;
       }
 
-      const handleMouseMove = (e: MouseEvent) => {
+      const handleMouseMove = (e: globalThis.MouseEvent) => {
         mousePosition.current = { x: e.clientX, y: e.clientY };
       };
 
