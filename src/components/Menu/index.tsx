@@ -264,12 +264,22 @@ export const Menu = forwardRef<HTMLDivElement | null, MenuProps>(
     const [activeItemElement, setActiveItemElement] = useState<HTMLElement | null>(null);
 
     const [submenuVisible, setSubmenuVisible] = useState<boolean>(false);
+    const submenuCloseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const lastScrollEvent = useRef<number | undefined>();
 
     useEffect(() => {
       setActiveState(uncontrolledActiveValue);
     }, [model]);
+
+    // Cleanup submenu close timeout on unmount
+    useEffect(() => {
+      return () => {
+        if (submenuCloseTimeoutRef.current) {
+          clearTimeout(submenuCloseTimeoutRef.current);
+        }
+      };
+    }, []);
 
     const innerSelected = disableSelectedOptionHighlight
       ? []
@@ -415,6 +425,11 @@ export const Menu = forwardRef<HTMLDivElement | null, MenuProps>(
     }, [defaultIsActive]);
 
     const handleSubMenuClose = () => {
+      // Clear any pending timeout when explicitly closing submenu
+      if (submenuCloseTimeoutRef.current) {
+        clearTimeout(submenuCloseTimeoutRef.current);
+        submenuCloseTimeoutRef.current = null;
+      }
       setSubmenuVisible(false);
       activateMenu?.(wrapperRef);
     };
@@ -437,10 +452,18 @@ export const Menu = forwardRef<HTMLDivElement | null, MenuProps>(
             !subMenuRef.current?.contains(relTarget as Node) &&
             !verticalScrollAriaRef.current?.contains(relTarget as Node)
           ) {
-            setSubmenuVisible(false);
+            // Use safety triangle: delay closing the submenu to allow diagonal mouse movement
+            submenuCloseTimeoutRef.current = setTimeout(() => {
+              setSubmenuVisible(false);
+            }, 300);
           }
         },
         onHover: (e: MouseEvent<HTMLDivElement>) => {
+          // Clear any pending submenu close timeout (safety triangle)
+          if (submenuCloseTimeoutRef.current) {
+            clearTimeout(submenuCloseTimeoutRef.current);
+            submenuCloseTimeoutRef.current = null;
+          }
           activateItem(id);
           setSubmenuVisible(hasSubmenu);
           setActiveItemElement(e.currentTarget as HTMLDivElement);
@@ -556,6 +579,11 @@ export const Menu = forwardRef<HTMLDivElement | null, MenuProps>(
     };
 
     const handleClickOutside = () => {
+      // Clear any pending timeout when clicking outside
+      if (submenuCloseTimeoutRef.current) {
+        clearTimeout(submenuCloseTimeoutRef.current);
+        submenuCloseTimeoutRef.current = null;
+      }
       setSubmenuVisible(false);
     };
 
@@ -584,7 +612,13 @@ export const Menu = forwardRef<HTMLDivElement | null, MenuProps>(
 
       const intersectionCallback: IntersectionObserverCallback = (entries) => {
         entries.forEach((entry) => {
-          setSubmenuVisible(!(entry.intersectionRatio < options.threshold));
+          const shouldBeVisible = !(entry.intersectionRatio < options.threshold);
+          if (!shouldBeVisible && submenuCloseTimeoutRef.current) {
+            // Clear any pending timeout when hiding due to scroll
+            clearTimeout(submenuCloseTimeoutRef.current);
+            submenuCloseTimeoutRef.current = null;
+          }
+          setSubmenuVisible(shouldBeVisible);
         });
       };
 
