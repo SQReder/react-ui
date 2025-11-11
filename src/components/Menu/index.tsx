@@ -159,6 +159,9 @@ export interface MenuProps extends HTMLAttributes<HTMLDivElement> {
   /** @internal
    * Обработчик события при попытке закрыть subMenu */
   onCloseQuery?: () => void;
+  /** @internal
+   * Обработчик входа мыши в subMenu (для forgiving navigation) */
+  onSubMenuEnter?: () => void;
   /**
    * Признак необходимости активировать меню сразу при появлении
    */
@@ -201,6 +204,7 @@ export const Menu = forwardRef<HTMLDivElement | null, MenuProps>(
       rowCount = 6,
       parentMenuRef,
       onCloseQuery,
+      onSubMenuEnter,
       defaultIsActive = true,
       subMenuRenderDirection,
       preventFocusSteal,
@@ -265,7 +269,152 @@ export const Menu = forwardRef<HTMLDivElement | null, MenuProps>(
 
     const [submenuVisible, setSubmenuVisible] = useState<boolean>(false);
 
+    // Forgiving navigation state
+    const forgivingModeRef = useRef<{
+      active: boolean;
+      triangle: { x1: number; y1: number; x2: number; y2: number; x3: number; y3: number } | null;
+      timeoutId: ReturnType<typeof setTimeout> | null;
+    }>({ active: false, triangle: null, timeoutId: null });
+
     const lastScrollEvent = useRef<number | undefined>();
+
+    /**
+     * Checks if a point is inside a triangle using barycentric coordinates.
+     * This is used to determine if the mouse is moving towards the submenu.
+     */
+    const isPointInTriangle = (
+      px: number,
+      py: number,
+      triangle: { x1: number; y1: number; x2: number; y2: number; x3: number; y3: number },
+    ): boolean => {
+      const { x1, y1, x2, y2, x3, y3 } = triangle;
+
+      // Calculate barycentric coordinates
+      const denominator = (y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3);
+      if (denominator === 0) return false;
+
+      const a = ((y2 - y3) * (px - x3) + (x3 - x2) * (py - y3)) / denominator;
+      const b = ((y3 - y1) * (px - x3) + (x1 - x3) * (py - y3)) / denominator;
+      const c = 1 - a - b;
+
+      // Point is inside triangle if all barycentric coordinates are >= 0
+      return a >= 0 && b >= 0 && c >= 0;
+    };
+
+    /**
+     * Calculates a triangular "safe zone" from the current mouse position to the submenu.
+     * Users can move through this zone without accidentally closing the submenu.
+     */
+    const calculateForgivingTriangle = (
+      mouseX: number,
+      mouseY: number,
+      submenuElement: HTMLElement | null,
+    ): { x1: number; y1: number; x2: number; y2: number; x3: number; y3: number } | null => {
+      if (!submenuElement) return null;
+
+      const submenuRect = submenuElement.getBoundingClientRect();
+
+      // Determine if submenu is to the right or left
+      // The triangle vertices are: mouse position, top corner of submenu, bottom corner of submenu
+      const submenuLeft = submenuRect.left;
+      const submenuRight = submenuRect.right;
+      const submenuTop = submenuRect.top;
+      const submenuBottom = submenuRect.bottom;
+
+      // Add a small buffer to make the triangle slightly wider (more forgiving)
+      const buffer = 5;
+
+      // Check if submenu is to the right or left of the menu
+      // Use the submenu's position relative to mouse to determine direction
+      const isSubmenuOnRight = submenuLeft > mouseX;
+
+      if (isSubmenuOnRight) {
+        // Triangle: mouse -> top-left of submenu -> bottom-left of submenu
+        return {
+          x1: mouseX,
+          y1: mouseY,
+          x2: submenuLeft - buffer,
+          y2: submenuTop - buffer,
+          x3: submenuLeft - buffer,
+          y3: submenuBottom + buffer,
+        };
+      } else {
+        // Triangle: mouse -> top-right of submenu -> bottom-right of submenu
+        return {
+          x1: mouseX,
+          y1: mouseY,
+          x2: submenuRight + buffer,
+          y2: submenuTop - buffer,
+          x3: submenuRight + buffer,
+          y3: submenuBottom + buffer,
+        };
+      }
+    };
+
+    /**
+     * Updates the forgiving mode state based on current mouse position.
+     * Called on mousemove events to determine if user is still moving towards submenu.
+     */
+    const updateForgivingMode = (mouseX: number, mouseY: number) => {
+      const { active, triangle } = forgivingModeRef.current;
+
+      if (!active || !triangle) return;
+
+      // Check if mouse is still within the triangle
+      const isInTriangle = isPointInTriangle(mouseX, mouseY, triangle);
+
+      if (!isInTriangle) {
+        // Mouse left the triangle - exit forgiving mode after a small delay
+        // This delay makes the experience less jarring
+        if (forgivingModeRef.current.timeoutId) {
+          clearTimeout(forgivingModeRef.current.timeoutId);
+        }
+
+        forgivingModeRef.current.timeoutId = setTimeout(() => {
+          forgivingModeRef.current.active = false;
+          forgivingModeRef.current.triangle = null;
+          forgivingModeRef.current.timeoutId = null;
+        }, 100); // 100ms grace period
+      } else {
+        // Mouse is in triangle - cancel any pending exit
+        if (forgivingModeRef.current.timeoutId) {
+          clearTimeout(forgivingModeRef.current.timeoutId);
+          forgivingModeRef.current.timeoutId = null;
+        }
+      }
+    };
+
+    /**
+     * Enters forgiving navigation mode when a submenu opens.
+     * Calculates the tolerance triangle and sets up mouse tracking.
+     */
+    const enterForgivingMode = (mouseX: number, mouseY: number) => {
+      // Calculate triangle based on submenu position
+      const triangle = calculateForgivingTriangle(mouseX, mouseY, subMenuRef.current);
+
+      if (triangle) {
+        forgivingModeRef.current = {
+          active: true,
+          triangle,
+          timeoutId: null,
+        };
+      }
+    };
+
+    /**
+     * Exits forgiving navigation mode.
+     * Called when submenu closes or user clearly abandons navigation.
+     */
+    const exitForgivingMode = () => {
+      if (forgivingModeRef.current.timeoutId) {
+        clearTimeout(forgivingModeRef.current.timeoutId);
+      }
+      forgivingModeRef.current = {
+        active: false,
+        triangle: null,
+        timeoutId: null,
+      };
+    };
 
     useEffect(() => {
       setActiveState(uncontrolledActiveValue);
@@ -414,8 +563,32 @@ export const Menu = forwardRef<HTMLDivElement | null, MenuProps>(
       };
     }, [defaultIsActive]);
 
+    // Mouse tracking for forgiving navigation
+    useEffect(() => {
+      const handleMouseMove = (e: MouseEvent) => {
+        if (forgivingModeRef.current.active) {
+          updateForgivingMode(e.clientX, e.clientY);
+        }
+      };
+
+      document.addEventListener('mousemove', handleMouseMove, { passive: true });
+
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        exitForgivingMode(); // Clean up on unmount
+      };
+    }, []);
+
+    // Exit forgiving mode when submenu closes
+    useEffect(() => {
+      if (!submenuVisible) {
+        exitForgivingMode();
+      }
+    }, [submenuVisible]);
+
     const handleSubMenuClose = () => {
       setSubmenuVisible(false);
+      exitForgivingMode(); // Exit forgiving mode when submenu closes
       activateMenu?.(wrapperRef);
     };
 
@@ -431,6 +604,13 @@ export const Menu = forwardRef<HTMLDivElement | null, MenuProps>(
         selected,
         onLeave: (e: MouseEvent<HTMLDivElement>) => {
           const relTarget = e.relatedTarget;
+
+          // Check if we're in forgiving mode - if so, don't close the submenu yet
+          // The user might be navigating towards the submenu through the tolerance triangle
+          if (forgivingModeRef.current.active) {
+            return;
+          }
+
           if (
             relTarget &&
             Object.hasOwn(relTarget, 'nodeName') && // необходимо чтобы проверить действительно ли это Node
@@ -438,12 +618,44 @@ export const Menu = forwardRef<HTMLDivElement | null, MenuProps>(
             !verticalScrollAriaRef.current?.contains(relTarget as Node)
           ) {
             setSubmenuVisible(false);
+            exitForgivingMode();
           }
         },
         onHover: (e: MouseEvent<HTMLDivElement>) => {
+          // If we're in forgiving mode, check if the mouse is still in the tolerance triangle
+          // This prevents accidentally switching menu items when moving towards a submenu
+          if (forgivingModeRef.current.active && forgivingModeRef.current.triangle) {
+            const isInTriangle = isPointInTriangle(
+              e.clientX,
+              e.clientY,
+              forgivingModeRef.current.triangle,
+            );
+
+            // If mouse is still in the triangle (moving towards submenu), ignore this hover event
+            // This is the core of the forgiving navigation - we don't switch items prematurely
+            if (isInTriangle && activeId !== id) {
+              return;
+            }
+          }
+
+          // Exit forgiving mode when switching to a different item
+          if (activeId !== id) {
+            exitForgivingMode();
+          }
+
           activateItem(id);
           setSubmenuVisible(hasSubmenu);
           setActiveItemElement(e.currentTarget as HTMLDivElement);
+
+          // If this item has a submenu and we're opening it, enter forgiving mode
+          // This allows the user to move their mouse towards the submenu without it closing
+          if (hasSubmenu) {
+            // We need to wait a moment for the submenu to render before calculating the triangle
+            // Using requestAnimationFrame ensures the DOM is updated
+            requestAnimationFrame(() => {
+              enterForgivingMode(e.clientX, e.clientY);
+            });
+          }
         },
         onMouseDown: preventFocusSteal ? (e: MouseEvent<HTMLElement>) => e.preventDefault() : undefined,
         onClick: () => handleClickItem(id),
@@ -534,6 +746,7 @@ export const Menu = forwardRef<HTMLDivElement | null, MenuProps>(
             model={activeItem.subItems}
             subMenuRenderDirection={subMenuRenderDirection}
             onCloseQuery={handleSubMenuClose}
+            onSubMenuEnter={exitForgivingMode}
             selected={innerSelected}
             onSelectItem={(id) => handleClickItem(id)}
             virtualScroll={virtualScroll}
@@ -547,6 +760,13 @@ export const Menu = forwardRef<HTMLDivElement | null, MenuProps>(
 
     const handleMouseEnter = (e: MouseEvent<HTMLDivElement>) => {
       if (currentActiveMenu !== wrapperRef) activateMenu?.(wrapperRef);
+
+      // If this menu is a submenu and user's mouse entered it, notify parent to exit forgiving mode
+      // The user has successfully navigated to the submenu
+      if (parentMenuRef) {
+        onSubMenuEnter?.();
+      }
+
       props.onMouseEnter?.(e);
     };
 
