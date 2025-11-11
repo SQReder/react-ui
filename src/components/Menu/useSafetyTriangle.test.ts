@@ -1,6 +1,13 @@
 import { renderHook, act } from '@testing-library/react';
 import { useSafetyTriangle } from './useSafetyTriangle';
 
+// Helper function to create a mock element with getBoundingClientRect
+const createMockElement = (rect: DOMRect) => {
+  const element = document.createElement('div');
+  jest.spyOn(element, 'getBoundingClientRect').mockReturnValue(rect);
+  return element;
+};
+
 describe('useSafetyTriangle', () => {
   beforeEach(() => {
     jest.useFakeTimers();
@@ -73,8 +80,7 @@ describe('useSafetyTriangle', () => {
     it('should set trigger element', () => {
       const { result } = renderHook(() => useSafetyTriangle());
 
-      const element = document.createElement('div');
-      element.getBoundingClientRect = jest.fn(() => ({
+      const element = createMockElement({
         left: 0,
         top: 0,
         right: 100,
@@ -84,7 +90,7 @@ describe('useSafetyTriangle', () => {
         x: 0,
         y: 0,
         toJSON: jest.fn(),
-      }));
+      });
 
       act(() => {
         result.current.setTriggerElement(element);
@@ -97,8 +103,7 @@ describe('useSafetyTriangle', () => {
     it('should set submenu element', () => {
       const { result } = renderHook(() => useSafetyTriangle());
 
-      const element = document.createElement('div');
-      element.getBoundingClientRect = jest.fn(() => ({
+      const element = createMockElement({
         left: 100,
         top: 0,
         right: 200,
@@ -108,7 +113,7 @@ describe('useSafetyTriangle', () => {
         x: 100,
         y: 0,
         toJSON: jest.fn(),
-      }));
+      });
 
       act(() => {
         result.current.setSubmenuElement(element);
@@ -120,8 +125,7 @@ describe('useSafetyTriangle', () => {
     it('should clear element references when set to null', () => {
       const { result } = renderHook(() => useSafetyTriangle());
 
-      const element = document.createElement('div');
-      element.getBoundingClientRect = jest.fn(() => ({
+      const element = createMockElement({
         left: 0,
         top: 0,
         right: 100,
@@ -131,7 +135,7 @@ describe('useSafetyTriangle', () => {
         x: 0,
         y: 0,
         toJSON: jest.fn(),
-      }));
+      });
 
       act(() => {
         result.current.setTriggerElement(element);
@@ -147,8 +151,7 @@ describe('useSafetyTriangle', () => {
     it('should detect mouse in trigger element', () => {
       const { result } = renderHook(() => useSafetyTriangle({ buffer: 0 }));
 
-      const trigger = document.createElement('div');
-      trigger.getBoundingClientRect = jest.fn(() => ({
+      const trigger = createMockElement({
         left: 0,
         top: 0,
         right: 100,
@@ -158,10 +161,9 @@ describe('useSafetyTriangle', () => {
         x: 0,
         y: 0,
         toJSON: jest.fn(),
-      }));
+      });
 
-      const submenu = document.createElement('div');
-      submenu.getBoundingClientRect = jest.fn(() => ({
+      const submenu = createMockElement({
         left: 100,
         top: 0,
         right: 200,
@@ -171,7 +173,7 @@ describe('useSafetyTriangle', () => {
         x: 100,
         y: 0,
         toJSON: jest.fn(),
-      }));
+      });
 
       act(() => {
         result.current.setTriggerElement(trigger);
@@ -185,8 +187,7 @@ describe('useSafetyTriangle', () => {
     it('should detect mouse in submenu element', () => {
       const { result } = renderHook(() => useSafetyTriangle({ buffer: 0 }));
 
-      const trigger = document.createElement('div');
-      trigger.getBoundingClientRect = jest.fn(() => ({
+      const trigger = createMockElement({
         left: 0,
         top: 0,
         right: 100,
@@ -196,10 +197,9 @@ describe('useSafetyTriangle', () => {
         x: 0,
         y: 0,
         toJSON: jest.fn(),
-      }));
+      });
 
-      const submenu = document.createElement('div');
-      submenu.getBoundingClientRect = jest.fn(() => ({
+      const submenu = createMockElement({
         left: 100,
         top: 0,
         right: 200,
@@ -209,7 +209,7 @@ describe('useSafetyTriangle', () => {
         x: 100,
         y: 0,
         toJSON: jest.fn(),
-      }));
+      });
 
       act(() => {
         result.current.setTriggerElement(trigger);
@@ -229,8 +229,7 @@ describe('useSafetyTriangle', () => {
     it('should respect buffer zone', () => {
       const { result } = renderHook(() => useSafetyTriangle({ buffer: 10 }));
 
-      const trigger = document.createElement('div');
-      trigger.getBoundingClientRect = jest.fn(() => ({
+      const trigger = createMockElement({
         left: 0,
         top: 0,
         right: 100,
@@ -240,10 +239,9 @@ describe('useSafetyTriangle', () => {
         x: 0,
         y: 0,
         toJSON: jest.fn(),
-      }));
+      });
 
-      const submenu = document.createElement('div');
-      submenu.getBoundingClientRect = jest.fn(() => ({
+      const submenu = createMockElement({
         left: 100,
         top: 0,
         right: 200,
@@ -253,7 +251,7 @@ describe('useSafetyTriangle', () => {
         x: 100,
         y: 0,
         toJSON: jest.fn(),
-      }));
+      });
 
       act(() => {
         result.current.setTriggerElement(trigger);
@@ -295,8 +293,7 @@ describe('useSafetyTriangle', () => {
       const { result } = renderHook(() => useSafetyTriangle({ closeDelay: 300 }));
       const onClose = jest.fn();
 
-      const trigger = document.createElement('div');
-      trigger.getBoundingClientRect = jest.fn(() => ({
+      const trigger = createMockElement({
         left: 0,
         top: 0,
         right: 100,
@@ -306,10 +303,9 @@ describe('useSafetyTriangle', () => {
         x: 0,
         y: 0,
         toJSON: jest.fn(),
-      }));
+      });
 
-      const submenu = document.createElement('div');
-      submenu.getBoundingClientRect = jest.fn(() => ({
+      const submenu = createMockElement({
         left: 100,
         top: 0,
         right: 200,
@@ -319,7 +315,7 @@ describe('useSafetyTriangle', () => {
         x: 100,
         y: 0,
         toJSON: jest.fn(),
-      }));
+      });
 
       act(() => {
         result.current.setTriggerElement(trigger);
@@ -362,8 +358,7 @@ describe('useSafetyTriangle', () => {
       const onClose1 = jest.fn();
       const onClose2 = jest.fn();
 
-      const trigger = document.createElement('div');
-      trigger.getBoundingClientRect = jest.fn(() => ({
+      const trigger = createMockElement({
         left: 0,
         top: 0,
         right: 100,
@@ -373,10 +368,9 @@ describe('useSafetyTriangle', () => {
         x: 0,
         y: 0,
         toJSON: jest.fn(),
-      }));
+      });
 
-      const submenu = document.createElement('div');
-      submenu.getBoundingClientRect = jest.fn(() => ({
+      const submenu = createMockElement({
         left: 100,
         top: 0,
         right: 200,
@@ -386,7 +380,7 @@ describe('useSafetyTriangle', () => {
         x: 100,
         y: 0,
         toJSON: jest.fn(),
-      }));
+      });
 
       act(() => {
         result.current.setTriggerElement(trigger);
@@ -432,8 +426,7 @@ describe('useSafetyTriangle', () => {
       const { result } = renderHook(() => useSafetyTriangle({ closeDelay: 300 }));
       const onClose = jest.fn();
 
-      const trigger = document.createElement('div');
-      trigger.getBoundingClientRect = jest.fn(() => ({
+      const trigger = createMockElement({
         left: 0,
         top: 0,
         right: 100,
@@ -443,10 +436,9 @@ describe('useSafetyTriangle', () => {
         x: 0,
         y: 0,
         toJSON: jest.fn(),
-      }));
+      });
 
-      const submenu = document.createElement('div');
-      submenu.getBoundingClientRect = jest.fn(() => ({
+      const submenu = createMockElement({
         left: 100,
         top: 0,
         right: 200,
@@ -456,7 +448,7 @@ describe('useSafetyTriangle', () => {
         x: 100,
         y: 0,
         toJSON: jest.fn(),
-      }));
+      });
 
       act(() => {
         result.current.setTriggerElement(trigger);
@@ -490,8 +482,7 @@ describe('useSafetyTriangle', () => {
       const { result } = renderHook(() => useSafetyTriangle({ closeDelay: 300 }));
       const onClose = jest.fn();
 
-      const trigger = document.createElement('div');
-      trigger.getBoundingClientRect = jest.fn(() => ({
+      const trigger = createMockElement({
         left: 0,
         top: 0,
         right: 100,
@@ -501,10 +492,9 @@ describe('useSafetyTriangle', () => {
         x: 0,
         y: 0,
         toJSON: jest.fn(),
-      }));
+      });
 
-      const submenu = document.createElement('div');
-      submenu.getBoundingClientRect = jest.fn(() => ({
+      const submenu = createMockElement({
         left: 100,
         top: 0,
         right: 200,
@@ -514,7 +504,7 @@ describe('useSafetyTriangle', () => {
         x: 100,
         y: 0,
         toJSON: jest.fn(),
-      }));
+      });
 
       act(() => {
         result.current.setTriggerElement(trigger);
@@ -551,8 +541,7 @@ describe('useSafetyTriangle', () => {
       const { result } = renderHook(() => useSafetyTriangle({ buffer: 0 }));
 
       // Trigger on left, submenu on right
-      const trigger = document.createElement('div');
-      trigger.getBoundingClientRect = jest.fn(() => ({
+      const trigger = createMockElement({
         left: 0,
         top: 20,
         right: 100,
@@ -562,10 +551,9 @@ describe('useSafetyTriangle', () => {
         x: 0,
         y: 20,
         toJSON: jest.fn(),
-      }));
+      });
 
-      const submenu = document.createElement('div');
-      submenu.getBoundingClientRect = jest.fn(() => ({
+      const submenu = createMockElement({
         left: 100,
         top: 0,
         right: 200,
@@ -575,7 +563,7 @@ describe('useSafetyTriangle', () => {
         x: 100,
         y: 0,
         toJSON: jest.fn(),
-      }));
+      });
 
       act(() => {
         result.current.setTriggerElement(trigger);
@@ -592,8 +580,7 @@ describe('useSafetyTriangle', () => {
       const { result } = renderHook(() => useSafetyTriangle({ buffer: 0 }));
 
       // Submenu on left, trigger on right
-      const trigger = document.createElement('div');
-      trigger.getBoundingClientRect = jest.fn(() => ({
+      const trigger = createMockElement({
         left: 100,
         top: 20,
         right: 200,
@@ -603,10 +590,9 @@ describe('useSafetyTriangle', () => {
         x: 100,
         y: 20,
         toJSON: jest.fn(),
-      }));
+      });
 
-      const submenu = document.createElement('div');
-      submenu.getBoundingClientRect = jest.fn(() => ({
+      const submenu = createMockElement({
         left: 0,
         top: 0,
         right: 100,
@@ -616,7 +602,7 @@ describe('useSafetyTriangle', () => {
         x: 0,
         y: 0,
         toJSON: jest.fn(),
-      }));
+      });
 
       act(() => {
         result.current.setTriggerElement(trigger);
