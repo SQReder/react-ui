@@ -277,8 +277,8 @@ export const Menu = forwardRef<HTMLDivElement | null, MenuProps>(
     useEffect(() => {
       const handleMouseMove = (e: MouseEvent) => {
         mousePositions.current.push({ x: e.pageX, y: e.pageY });
-        // Keep only last 3 positions
-        if (mousePositions.current.length > 3) {
+        // Keep only last 2 positions (current and previous)
+        if (mousePositions.current.length > 2) {
           mousePositions.current.shift();
         }
       };
