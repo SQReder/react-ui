@@ -265,12 +265,29 @@ export const Menu = forwardRef<HTMLDivElement | null, MenuProps>(
 
     const [submenuVisible, setSubmenuVisible] = useState<boolean>(false);
     const submenuCloseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const mousePositions = useRef<Array<{ x: number; y: number }>>([]);
 
     const lastScrollEvent = useRef<number | undefined>();
 
     useEffect(() => {
       setActiveState(uncontrolledActiveValue);
     }, [model]);
+
+    // Track mouse position for safety triangle calculation
+    useEffect(() => {
+      const handleMouseMove = (e: MouseEvent) => {
+        mousePositions.current.push({ x: e.pageX, y: e.pageY });
+        // Keep only last 3 positions
+        if (mousePositions.current.length > 3) {
+          mousePositions.current.shift();
+        }
+      };
+
+      document.addEventListener('mousemove', handleMouseMove);
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+      };
+    }, []);
 
     // Cleanup submenu close timeout on unmount
     useEffect(() => {
@@ -434,6 +451,57 @@ export const Menu = forwardRef<HTMLDivElement | null, MenuProps>(
       activateMenu?.(wrapperRef);
     };
 
+    /**
+     * Calculate if mouse is moving toward the open submenu using slope analysis.
+     * This implements the "safety triangle" pattern from jQuery-menu-aim.
+     */
+    const isMovingTowardSubmenu = (): boolean => {
+      if (!subMenuRef.current || mousePositions.current.length < 2) {
+        return false;
+      }
+
+      const submenuRect = subMenuRef.current.getBoundingClientRect();
+      const currentPos = mousePositions.current[mousePositions.current.length - 1];
+      const previousPos = mousePositions.current[mousePositions.current.length - 2];
+
+      if (!currentPos || !previousPos) return false;
+
+      // Helper function to calculate slope between two points
+      const slope = (a: { x: number; y: number }, b: { x: number; y: number }) => {
+        return (b.y - a.y) / (b.x - a.x);
+      };
+
+      // Determine submenu position (left or right of parent)
+      const submenuOnRight = submenuRect.left > (activeItemElement?.getBoundingClientRect().right || 0);
+
+      // Define the two corners of the submenu that form the triangle
+      let decreasingCorner: { x: number; y: number };
+      let increasingCorner: { x: number; y: number };
+
+      if (submenuOnRight) {
+        // Submenu is to the right
+        decreasingCorner = { x: submenuRect.left, y: submenuRect.top };
+        increasingCorner = { x: submenuRect.left, y: submenuRect.bottom };
+      } else {
+        // Submenu is to the left
+        decreasingCorner = { x: submenuRect.right, y: submenuRect.bottom };
+        increasingCorner = { x: submenuRect.right, y: submenuRect.top };
+      }
+
+      // Calculate slopes from current and previous positions to the corners
+      const currentDecreasingSlope = slope(currentPos, decreasingCorner);
+      const currentIncreasingSlope = slope(currentPos, increasingCorner);
+      const previousDecreasingSlope = slope(previousPos, decreasingCorner);
+      const previousIncreasingSlope = slope(previousPos, increasingCorner);
+
+      // Mouse is moving toward submenu if slopes are converging toward the submenu area
+      if (submenuOnRight) {
+        return currentDecreasingSlope < previousDecreasingSlope && currentIncreasingSlope > previousIncreasingSlope;
+      } else {
+        return currentDecreasingSlope > previousDecreasingSlope && currentIncreasingSlope < previousIncreasingSlope;
+      }
+    };
+
     const renderItem = (item: MenuModelItemProps, index: number) => {
       const { id, subItems, render, ...itemProps } = item;
       const hasSubmenu = !!subItems && subItems.length > 0;
@@ -452,10 +520,15 @@ export const Menu = forwardRef<HTMLDivElement | null, MenuProps>(
             !subMenuRef.current?.contains(relTarget as Node) &&
             !verticalScrollAriaRef.current?.contains(relTarget as Node)
           ) {
-            // Use safety triangle: delay closing the submenu to allow diagonal mouse movement
-            submenuCloseTimeoutRef.current = setTimeout(() => {
+            // Safety triangle: only delay if mouse is moving toward the open submenu
+            if (submenuVisible && isMovingTowardSubmenu()) {
+              submenuCloseTimeoutRef.current = setTimeout(() => {
+                setSubmenuVisible(false);
+              }, 300);
+            } else {
+              // Immediately close if not moving toward submenu
               setSubmenuVisible(false);
-            }, 300);
+            }
           }
         },
         onHover: (e: MouseEvent<HTMLDivElement>) => {
