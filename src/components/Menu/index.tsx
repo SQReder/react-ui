@@ -265,7 +265,7 @@ export const Menu = forwardRef<HTMLDivElement | null, MenuProps>(
 
     const [submenuVisible, setSubmenuVisible] = useState<boolean>(false);
     const submenuCloseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const mousePositions = useRef<Array<{ x: number; y: number }>>([]);
+    const previousMousePosition = useRef<{ x: number; y: number } | null>(null);
 
     const lastScrollEvent = useRef<number | undefined>();
 
@@ -273,14 +273,10 @@ export const Menu = forwardRef<HTMLDivElement | null, MenuProps>(
       setActiveState(uncontrolledActiveValue);
     }, [model]);
 
-    // Track mouse position for safety triangle calculation
+    // Track previous mouse position for safety triangle calculation
     useEffect(() => {
       const handleMouseMove = (e: MouseEvent) => {
-        mousePositions.current.push({ x: e.pageX, y: e.pageY });
-        // Keep only last 2 positions (current and previous)
-        if (mousePositions.current.length > 2) {
-          mousePositions.current.shift();
-        }
+        previousMousePosition.current = { x: e.pageX, y: e.pageY };
       };
 
       document.addEventListener('mousemove', handleMouseMove);
@@ -455,16 +451,13 @@ export const Menu = forwardRef<HTMLDivElement | null, MenuProps>(
      * Calculate if mouse is moving toward the open submenu using slope analysis.
      * This implements the "safety triangle" pattern from jQuery-menu-aim.
      */
-    const isMovingTowardSubmenu = (): boolean => {
-      if (!subMenuRef.current || mousePositions.current.length < 2) {
+    const isMovingTowardSubmenu = (currentPos: { x: number; y: number }): boolean => {
+      if (!subMenuRef.current || !previousMousePosition.current) {
         return false;
       }
 
       const submenuRect = subMenuRef.current.getBoundingClientRect();
-      const currentPos = mousePositions.current[mousePositions.current.length - 1];
-      const previousPos = mousePositions.current[mousePositions.current.length - 2];
-
-      if (!currentPos || !previousPos) return false;
+      const previousPos = previousMousePosition.current;
 
       // Helper function to calculate slope between two points
       const slope = (a: { x: number; y: number }, b: { x: number; y: number }) => {
@@ -521,7 +514,8 @@ export const Menu = forwardRef<HTMLDivElement | null, MenuProps>(
             !verticalScrollAriaRef.current?.contains(relTarget as Node)
           ) {
             // Safety triangle: only delay if mouse is moving toward the open submenu
-            if (submenuVisible && isMovingTowardSubmenu()) {
+            const currentPos = { x: e.pageX, y: e.pageY };
+            if (submenuVisible && isMovingTowardSubmenu(currentPos)) {
               submenuCloseTimeoutRef.current = setTimeout(() => {
                 setSubmenuVisible(false);
               }, 300);
