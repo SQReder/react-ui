@@ -13,6 +13,7 @@ import { useDropdown } from '#src/components/DropdownProvider';
 import type { RenderDirection } from '#src/components/Menu/utils';
 import { findModelItem, hasSelectedChildren, valueToArray } from '#src/components/Menu/utils';
 import { passMenuDataAttributes } from '#src/components/common/utils/splitDataAttributes';
+import { useSafetyTriangle } from '#src/components/Menu/useSafetyTriangle';
 
 export const getItemHeight = (dimension?: MenuDimensions) => {
   switch (dimension) {
@@ -264,8 +265,15 @@ export const Menu = forwardRef<HTMLDivElement | null, MenuProps>(
     const [activeItemElement, setActiveItemElement] = useState<HTMLElement | null>(null);
 
     const [submenuVisible, setSubmenuVisible] = useState<boolean>(false);
+    const submenuWrapperRef = useRef<HTMLElement | null>(null);
 
     const lastScrollEvent = useRef<number | undefined>();
+
+    // Initialize safety triangle for smooth submenu navigation
+    const safetyTriangle = useSafetyTriangle({
+      buffer: 5,
+      closeDelay: 300,
+    });
 
     useEffect(() => {
       setActiveState(uncontrolledActiveValue);
@@ -431,7 +439,35 @@ export const Menu = forwardRef<HTMLDivElement | null, MenuProps>(
         selected,
         onLeave: (e: MouseEvent<HTMLDivElement>) => {
           const relTarget = e.relatedTarget;
+
+          // If moving to scrollbar, don't close submenu
           if (
+            relTarget &&
+            Object.hasOwn(relTarget, 'nodeName') &&
+            verticalScrollAriaRef.current?.contains(relTarget as Node)
+          ) {
+            return;
+          }
+
+          // If moving to submenu, don't close
+          if (
+            relTarget &&
+            Object.hasOwn(relTarget, 'nodeName') &&
+            subMenuRef.current?.contains(relTarget as Node)
+          ) {
+            return;
+          }
+
+          // Use safety triangle logic for smooth navigation
+          if (hasSubmenu && submenuVisible) {
+            const shouldCloseImmediately = safetyTriangle.handleMouseLeave(e, () => {
+              setSubmenuVisible(false);
+            });
+
+            if (shouldCloseImmediately) {
+              setSubmenuVisible(false);
+            }
+          } else if (
             relTarget &&
             Object.hasOwn(relTarget, 'nodeName') && // необходимо чтобы проверить действительно ли это Node
             !subMenuRef.current?.contains(relTarget as Node) &&
@@ -441,9 +477,21 @@ export const Menu = forwardRef<HTMLDivElement | null, MenuProps>(
           }
         },
         onHover: (e: MouseEvent<HTMLDivElement>) => {
+          // Cancel any pending close operations
+          safetyTriangle.cancelClose();
+
+          // Update mouse position for safety triangle
+          safetyTriangle.updateMousePosition(e);
+
           activateItem(id);
           setSubmenuVisible(hasSubmenu);
-          setActiveItemElement(e.currentTarget as HTMLDivElement);
+          const element = e.currentTarget as HTMLDivElement;
+          setActiveItemElement(element);
+
+          // Set trigger element for safety triangle calculation
+          if (hasSubmenu) {
+            safetyTriangle.setTriggerElement(element);
+          }
         },
         onMouseDown: preventFocusSteal ? (e: MouseEvent<HTMLElement>) => e.preventDefault() : undefined,
         onClick: () => handleClickItem(id),
@@ -555,8 +603,14 @@ export const Menu = forwardRef<HTMLDivElement | null, MenuProps>(
       props.onMouseLeave?.(e);
     };
 
+    const handleMouseMove = (e: MouseEvent<HTMLDivElement>) => {
+      safetyTriangle.updateMousePosition(e);
+      props.onMouseMove?.(e);
+    };
+
     const handleClickOutside = () => {
       setSubmenuVisible(false);
+      safetyTriangle.cleanup();
     };
 
     const handleFocus = (e: FocusEvent<HTMLDivElement>) => {
@@ -570,6 +624,36 @@ export const Menu = forwardRef<HTMLDivElement | null, MenuProps>(
     };
 
     const menuProps = passMenuDataAttributes(props);
+
+    // Update submenu element reference for safety triangle
+    useEffect(() => {
+      if (submenuVisible && subMenuRef.current) {
+        safetyTriangle.setSubmenuElement(subMenuRef.current);
+      } else {
+        safetyTriangle.setSubmenuElement(null);
+      }
+    }, [submenuVisible, subMenuRef.current]);
+
+    // Track global mouse movement for safety triangle
+    useEffect(() => {
+      const handleGlobalMouseMove = (e: globalThis.MouseEvent) => {
+        safetyTriangle.updateMousePosition(e);
+      };
+
+      if (submenuVisible) {
+        document.addEventListener('mousemove', handleGlobalMouseMove);
+        return () => {
+          document.removeEventListener('mousemove', handleGlobalMouseMove);
+        };
+      }
+    }, [submenuVisible]);
+
+    // Cleanup safety triangle on unmount
+    useEffect(() => {
+      return () => {
+        safetyTriangle.cleanup();
+      };
+    }, []);
 
     // при скролле меню возникают ситуации когда активная опция выходит из видимой области
     // и открытое субменю может странным образом позиционироваться "оторванным" от породившего меню
@@ -601,6 +685,7 @@ export const Menu = forwardRef<HTMLDivElement | null, MenuProps>(
         $hasBottomPanel={hasBottomPanel}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
+        onMouseMove={handleMouseMove}
         onFocus={handleFocus}
         onBlur={handleBlur}
         {...props}
