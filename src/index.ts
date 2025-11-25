@@ -15,6 +15,7 @@ export * from './components/form';
 export * from './components/CheckboxGroup';
 export * from './components/CheckboxCompositeGroup';
 export * from './components/Chips';
+export * from './components/ChipsRow';
 export * from './components/input';
 export * from './components/Hint';
 export * from './components/Label';
