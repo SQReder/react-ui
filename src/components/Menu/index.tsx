@@ -11,7 +11,7 @@ import type { MenuDimensions } from '#src/components/Menu/types';
 import { SubMenuContainer } from '#src/components/Menu/SubMenuContainer';
 import { useDropdown } from '#src/components/DropdownProvider';
 import type { RenderDirection } from '#src/components/Menu/utils';
-import { findModelItem, hasSelectedChildren, valueToArray } from '#src/components/Menu/utils';
+import { findModelItem, hasSelectedChildren, valueToArray, isInSafetyTriangle } from '#src/components/Menu/utils';
 import { passMenuDataAttributes } from '#src/components/common/utils/splitDataAttributes';
 
 export const getItemHeight = (dimension?: MenuDimensions) => {
@@ -265,11 +265,42 @@ export const Menu = forwardRef<HTMLDivElement | null, MenuProps>(
 
     const [submenuVisible, setSubmenuVisible] = useState<boolean>(false);
 
+    // Track mouse position for safety triangle
+    const mousePosition = useRef<{ x: number; y: number } | null>(null);
+    const hoverStartPosition = useRef<{ x: number; y: number } | null>(null);
+    const closeTimeoutRef = useRef<number | undefined>();
+
     const lastScrollEvent = useRef<number | undefined>();
 
     useEffect(() => {
       setActiveState(uncontrolledActiveValue);
     }, [model]);
+
+    // Track mouse position for safety triangle
+    useEffect(() => {
+      if (!submenuVisible) {
+        mousePosition.current = null;
+        return;
+      }
+
+      const handleMouseMove = (e: globalThis.MouseEvent) => {
+        mousePosition.current = { x: e.clientX, y: e.clientY };
+      };
+
+      document.addEventListener('mousemove', handleMouseMove);
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+      };
+    }, [submenuVisible]);
+
+    // Cleanup timeout on unmount
+    useEffect(() => {
+      return () => {
+        if (closeTimeoutRef.current) {
+          clearTimeout(closeTimeoutRef.current);
+        }
+      };
+    }, []);
 
     const innerSelected = disableSelectedOptionHighlight
       ? []
@@ -437,10 +468,50 @@ export const Menu = forwardRef<HTMLDivElement | null, MenuProps>(
             !subMenuRef.current?.contains(relTarget as Node) &&
             !verticalScrollAriaRef.current?.contains(relTarget as Node)
           ) {
-            setSubmenuVisible(false);
+            // Use safety triangle to prevent accidental submenu closure
+            // when moving mouse diagonally toward submenu
+            if (closeTimeoutRef.current) {
+              clearTimeout(closeTimeoutRef.current);
+            }
+
+            closeTimeoutRef.current = window.setTimeout(() => {
+              const shouldClose = (() => {
+                if (!mousePosition.current || !hoverStartPosition.current || !activeItemElement || !subMenuRef.current) {
+                  return true;
+                }
+
+                const itemRect = activeItemElement.getBoundingClientRect();
+                const submenuRect = subMenuRef.current.getBoundingClientRect();
+                const submenuOnLeft = submenuRect.right < itemRect.left;
+
+                return !isInSafetyTriangle(
+                  mousePosition.current.x,
+                  mousePosition.current.y,
+                  hoverStartPosition.current.x,
+                  hoverStartPosition.current.y,
+                  itemRect,
+                  submenuRect,
+                  submenuOnLeft,
+                );
+              })();
+
+              if (shouldClose) {
+                setSubmenuVisible(false);
+                hoverStartPosition.current = null;
+              }
+            }, 100);
           }
         },
         onHover: (e: MouseEvent<HTMLDivElement>) => {
+          // Clear any pending close timeout when hovering
+          if (closeTimeoutRef.current) {
+            clearTimeout(closeTimeoutRef.current);
+            closeTimeoutRef.current = undefined;
+          }
+          // Store the position where hovering started for safety triangle calculation
+          if (!hoverStartPosition.current || activeId !== id) {
+            hoverStartPosition.current = { x: e.clientX, y: e.clientY };
+          }
           activateItem(id);
           setSubmenuVisible(hasSubmenu);
           setActiveItemElement(e.currentTarget as HTMLDivElement);
